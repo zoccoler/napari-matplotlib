@@ -61,7 +61,7 @@ class NapariMPLWidget(QWidget):
         self.canvas.figure.patch.set_facecolor("#262930")
         self.toolbar = NapariNavigationToolbar(self.canvas, self)
         self._replace_toolbar_icons()
-
+    
         self.setLayout(QVBoxLayout())
         self.layout().addWidget(self.toolbar)
         self.layout().addWidget(self.canvas)
@@ -161,7 +161,26 @@ class NapariMPLWidget(QWidget):
 
 
 class NapariNavigationToolbar(NavigationToolbar2QT):
-    """Custom Toolbar style for Napari."""
+    """Custom Toolbar style for Napari."""  
+    def __init__(self, canvas, parent=None, coordinates=True):
+        print(type(self.toolitems), self.toolitems)
+        # Add new button:
+        # - Name
+        # - Tooltip
+        # - name of png file (case insensitive)
+        # - name of local callback function
+        span_select_button = ('Select', 'Span Selection', 'select', 'my_selection')
+        self.toolitems.append(span_select_button)
+        super().__init__(canvas, parent, coordinates)
+
+    def my_selection(self, *args):
+        print('test')
+        print(self.canvas)
+        print(self.parent)
+        print('a')
+        # self.parent._toggle_span_selector()
+        print(args)
+        # self.canvas.mpl_connect('key_press_event', self.parent._toggle_span_selector)
 
     def _update_buttons_checked(self):
         """Update toggle tool icons when selected/unselected."""

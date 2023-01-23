@@ -99,14 +99,6 @@ class Line2DBaseWidget(NapariMPLWidget):
         print(xmin, xmax)
         raise NotImplementedError
 
-    def my_selection(self, *args):
-        if self.span_selector.active:
-            print('Span deactivated.')
-            self.span_selector.set_active(False)
-        else:
-            print('Span activated.')
-            self.span_selector.set_active(True)
-
 class MetadataLine2DWidget(Line2DBaseWidget):
     n_layers_input = Interval(1, 1)
 
@@ -125,20 +117,16 @@ class MetadataLine2DWidget(Line2DBaseWidget):
             call_button="plot",
         )
         
-        # self.ray_index = 0
-        # self.dot_index = 0
         self.layout().insertWidget(0, self._plugin_name_widget.native)
         self.layout().addWidget(self._key_selection_widget.native)
 
         image_file_path = os.path.join(ICON_ROOT, "Select.png")
-        self.toolbar._add_new_button('Select', 'Span Selection', image_file_path, self.my_selection2)
-
-        # print('TOOLITEMS = ', self.toolbar.toolitems)
-
-        # self.toolbar._add_new_button('Select', 'Span Selection', 'select', 'my_selection')
+        self.toolbar._add_new_button('Select', 'Span Selection', image_file_path, self.my_selection2, True)
 
     def my_selection2(self):
         print('I am myselection2!!')
+        self.toolbar._update_buttons_checked(button_name = 'Select')
+        print('Am I checked? ', self.toolbar._actions['Select'].isChecked())
 
     @property
     def x_axis_key(self) -> Optional[str]:

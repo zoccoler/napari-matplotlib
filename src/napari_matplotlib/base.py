@@ -165,90 +165,60 @@ class NapariMPLWidget(QWidget):
 class NapariNavigationToolbar(NavigationToolbar2QT):
     """Custom Toolbar style for Napari."""  
     def __init__(self, canvas, parent=None, coordinates=True):
-        # print(type(self.toolitems), self.toolitems)
-        # Add new button:
-        # - Name
-        # - Tooltip
-        # - name of png file (case insensitive)
-        # - name of local callback function
-        # span_select_button = ('Select', 'Span Selection', 'select', 'my_selection')
-        # self.toolitems.append(span_select_button)
         super().__init__(canvas, parent, coordinates)
         self.tb_canvas = canvas
         self.tb_parent = parent
         self.tb_coordinates = coordinates
-        # self._add_new_button(None, None, None, None)
-        # self._add_new_button('Select', 'Span Selection', 'select', self.my_selection)
-        
 
-    def _add_new_button(self, text, tooltip_text, image_file_path, callback):
-        # Add new button:
-        # - Name
-        # - Tooltip
-        # - path to png file (case insensitive)
-        # - callback function
-        new_button_config = (text, tooltip_text, image_file_path, callback)
-        self.toolitems.append(new_button_config)
-        print(self.toolitems)
-        print(self._actions)
-        # Get widget by index, which I get from count() method from layout()
-        n_widgets = self.layout().count()
-        myWidget = self.layout().itemAt(n_widgets-1).widget()
-        print('Got this widget: ', myWidget)
-        # Way to remove widget
+    def _add_new_button(self, text, tooltip_text, image_file_path, callback, separator=True, checkable=False):
+        """Add a new buttons to the toolbar.
+
+        Parameters
+        ----------
+        text : str
+            the text representing the name of the button
+        tooltip_text : str
+            the tooltip text exhibited when cursor hovers over button
+        image_file_path : str
+            path to the "png" file containing the button image
+        callback : function
+            function to be called when button is clicked
+        separator: bool
+            Whether to add a spacer before new button
+        checkable: bool
+            flag that indicates if button should or not be chackable
+        """        
+        self.toolitems.append((text, tooltip_text, image_file_path, callback))
+        # Get last widget (A QLabel spacer)
+        n_widgets = self.layout().count() # get number of widgets
+        myWidget = self.layout().itemAt(n_widgets-1).widget() # get last widget
+        # Remove last widget (the spacer)
         self.layout().removeWidget(myWidget)
         myWidget.deleteLater()
-        
-        for text, tooltip_text, image_file_path, callback in [new_button_config]:
-            if text is None:
-                self.addSeparator()
-            else:
-                # a = self.insertAction(self._actions["save_figure"], QAction(self._icon(image_file + '.png'), text, getattr(self, callback)))
-                a = self.addAction(QIcon(image_file_path),
-                                   text, callback)#getattr(self, callback))
-                self._actions[callback] = a
-                if callback in ['zoom', 'pan']:
-                    a.setCheckable(True)
-                if tooltip_text is not None:
-                    a.setToolTip(tooltip_text)
-
-         # Add the (x, y) location widget at the right side of the toolbar
-        # The stretch factor is 1 which means any resizing of the toolbar
-        # will resize this label instead of the buttons.
-        ## Rebuild spacer at the very end of toolbar (use locLabel created by __init__ from NavigationToolbar2QT)
+        if separator:
+            # Add a separator
+            self.addSeparator()
+        # Add custom button (addAction from QToolBar)
+        # https://doc.qt.io/qtforpython-5/PySide2/QtWidgets/QToolBar.html#PySide2.QtWidgets.PySide2.QtWidgets.QToolBar.addAction
+        a = self.addAction(QIcon(image_file_path), text, callback)
+        self._actions[text] = a
+        if checkable:
+            a.setCheckable(True)
+        if tooltip_text is not None:
+            a.setToolTip(tooltip_text)
+       
+        ## Rebuild spacer at the very end of toolbar (reuse 'locLabel' created by __init__ from NavigationToolbar2QT)
         # https://github.com/matplotlib/matplotlib/blob/85d7bb370186f2fa86df6ecc3d5cd064eb7f0b45/lib/matplotlib/backends/backend_qt.py#L631
         if self.tb_coordinates:
             labelAction = self.addWidget(self.locLabel)
             labelAction.setVisible(True)
 
-        # print('LAYOUT = ', self.layout().count())
-        # for i, child in enumerate(self.children()):
-        #     if type(child) is QLabel:
-        #         print(i, child)
-        #         item = self.layout().itemAt(i)
-        # # print(self.layout().items)
-        # self.layout()
-        print(self.children())
-        print(self._actions)
-                
-        # super().__init__(self.tb_canvas, self.tb_parent, self.tb_coordinates)
-        # self.update()
-
-
-    def my_selection(self, *args):
-        print('test')
-        print(self.canvas)
-        print(self.parent)
-        print('a')
-        # self.parent._toggle_span_selector()
-        print(args)
-        # self.canvas.mpl_connect('key_press_event', self.parent._toggle_span_selector)
-
-    def _update_buttons_checked(self):
+    def _update_buttons_checked(self, button_name=None):
         """Update toggle tool icons when selected/unselected."""
-        super()._update_buttons_checked()
+        # super()._update_buttons_checked()
         # changes pan/zoom icons depending on state (checked or not)
         if "pan" in self._actions:
+            self._actions['pan'].setChecked(self.mode.name == 'PAN')
             if self._actions["pan"].isChecked():
                 self._actions["pan"].setIcon(
                     QIcon(os.path.join(ICON_ROOT, "Pan_checked.png"))
@@ -258,6 +228,7 @@ class NapariNavigationToolbar(NavigationToolbar2QT):
                     QIcon(os.path.join(ICON_ROOT, "Pan.png"))
                 )
         if "zoom" in self._actions:
+            self._actions['zoom'].setChecked(self.mode.name == 'ZOOM')
             if self._actions["zoom"].isChecked():
                 self._actions["zoom"].setIcon(
                     QIcon(os.path.join(ICON_ROOT, "Zoom_checked.png"))
@@ -266,3 +237,19 @@ class NapariNavigationToolbar(NavigationToolbar2QT):
                 self._actions["zoom"].setIcon(
                     QIcon(os.path.join(ICON_ROOT, "Zoom.png"))
                 )
+        # If new button added and checkacble, update state and icon
+        if button_name is not None:
+            if button_name in self._actions:
+                if self._actions[button_name].isChecked():
+                    # Button was checked, update icon to checked
+                    self._actions[button_name].setIcon(
+                        QIcon(os.path.join(ICON_ROOT, button_name + "_checked.png"))
+                        )
+                    self._actions[button_name].setChecked(True)
+                    
+                else:
+                    # Button unchecked
+                    self._actions[button_name].setIcon(
+                        QIcon(os.path.join(ICON_ROOT, button_name + ".png"))
+                        )
+                    self._actions[button_name].setChecked(False)

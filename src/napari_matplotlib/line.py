@@ -28,20 +28,7 @@ class Line2DBaseWidget(NapariMPLWidget):
         self.axes = self.canvas.figure.subplots()
         self.update_layers(None)
 
-        # Create span selector
-        self.span_selector = SpanSelector(
-            self.axes,
-            self._on_span_select,
-            "horizontal",
-            useblit=True,
-            props=dict(alpha=0.5, facecolor="tab:orange"),
-            interactive=True,
-            drag_from_anywhere=True
-        )
-        # Not working, span activated by default
-        # self.canvas.mpl_connect('key_press_event', self._toggle_span_selector)
-
-
+        self.span_selector = None
 
     def clear(self) -> None:
         """
@@ -72,7 +59,6 @@ class Line2DBaseWidget(NapariMPLWidget):
             else:
                 line = self.axes.plot(x_data[i], y, alpha=self._line_alpha)
             self._lines += line
-
         self.axes.set_xlabel(x_axis_name)
         self.axes.set_ylabel(y_axis_name)
 
@@ -92,12 +78,27 @@ class Line2DBaseWidget(NapariMPLWidget):
         """
         raise NotImplementedError
 
-    def _on_span_select(self, xmin, xmax):
-        """
-        Get xmin and xmax of selection
-        """
-        print(xmin, xmax)
-        raise NotImplementedError
+    def _create_span_selector(self, active=False,
+        *args, **kwargs):
+        # Create span selector
+        self.span_selector = SpanSelector(**kwargs)
+        self.span_selector.active = False
+
+    def _enable_span_selector(self, active=False):
+        if self.span_selector is not None:
+            if active:
+                self.span_selector.active = True
+            else:
+                self.span_selector.active = False
+
+
+    # def _on_span_select(self, xmin, xmax):
+    #     """
+    #     This must be implemented on the subclass.
+
+    #     Get xmin and xmax of selection
+    #     """
+    #     raise NotImplementedError
 
 class MetadataLine2DWidget(Line2DBaseWidget):
     n_layers_input = Interval(1, 1)
@@ -120,13 +121,48 @@ class MetadataLine2DWidget(Line2DBaseWidget):
         self.layout().insertWidget(0, self._plugin_name_widget.native)
         self.layout().addWidget(self._key_selection_widget.native)
 
+        # Add span selection button to toolbar
         image_file_path = os.path.join(ICON_ROOT, "Select.png")
-        self.toolbar._add_new_button('Select', 'Span Selection', image_file_path, self.my_selection2, True)
+        self.toolbar._add_new_button('Select', 'Span Selection', image_file_path, self.enable_span_selector, True)
 
-    def my_selection2(self):
-        print('I am myselection2!!')
+        # Create horizontal Span Selector
+        self._create_span_selector(ax=self.axes,
+            onselect=self.on_span_select,
+            direction="horizontal",
+            useblit=True,
+            props=dict(alpha=0.5, facecolor="tab:orange"),
+            interactive=True,
+            drag_from_anywhere=True)
+
+    # Callback function from toolbar span selection button
+    def enable_span_selector(self):
         self.toolbar._update_buttons_checked(button_name = 'Select')
-        print('Am I checked? ', self.toolbar._actions['Select'].isChecked())
+        self._enable_span_selector(active=self.toolbar.button_state)
+        print('Am I checked? ', self.toolbar._actions['Select'].isChecked(), self.toolbar.button_state)
+    
+    def on_span_select(self, xmin, xmax):
+        print(xmin, xmax)
+        if len(self._lines) > 0:
+            x = self._lines[0].get_xdata()
+            
+            indmin, indmax = np.searchsorted(x, (xmin, xmax))
+            indmax = min(len(x) - 1, indmax)
+
+            region_x = x[indmin:indmax]
+            
+
+            if len(region_x) >= 2:
+                for line in self._lines:
+                    y = line.get_ydata()
+                    region_y = y[indmin:indmax]
+                    print(region_x, region_y)
+                    self.axes.plot(region_x, region_y, 'o')
+                    self.canvas.draw_idle()
+                # line2.set_data(region_x, region_y)
+                # ax2.set_xlim(region_x[0], region_x[-1])
+                # ax2.set_ylim(region_y.min(), region_y.max())
+                # fig.canvas.draw_idle()
+
 
     @property
     def x_axis_key(self) -> Optional[str]:

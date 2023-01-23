@@ -170,7 +170,7 @@ class NapariNavigationToolbar(NavigationToolbar2QT):
         self.tb_parent = parent
         self.tb_coordinates = coordinates
 
-    def _add_new_button(self, text, tooltip_text, image_file_path, callback, separator=True, checkable=False):
+    def _add_new_button(self, text, tooltip_text, image_file_path, callback, checkable=False, separator=True):
         """Add a new buttons to the toolbar.
 
         Parameters
@@ -204,6 +204,7 @@ class NapariNavigationToolbar(NavigationToolbar2QT):
         self._actions[text] = a
         if checkable:
             a.setCheckable(True)
+            self.button_state = False
         if tooltip_text is not None:
             a.setToolTip(tooltip_text)
        
@@ -246,6 +247,7 @@ class NapariNavigationToolbar(NavigationToolbar2QT):
                         QIcon(os.path.join(ICON_ROOT, button_name + "_checked.png"))
                         )
                     self._actions[button_name].setChecked(True)
+                    self.button_state = True
                     
                 else:
                     # Button unchecked
@@ -253,3 +255,4 @@ class NapariNavigationToolbar(NavigationToolbar2QT):
                         QIcon(os.path.join(ICON_ROOT, button_name + ".png"))
                         )
                     self._actions[button_name].setChecked(False)
+                    self.button_state = False

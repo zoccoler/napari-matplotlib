@@ -6,11 +6,14 @@ import numpy as np
 import pandas as pd
 from magicgui import magicgui
 from magicgui.widgets import ComboBox
+import os
+from pathlib import Path
 
 from .base import NapariMPLWidget
 from .util import Interval
 from matplotlib.widgets import SpanSelector
 
+ICON_ROOT = Path(__file__).parent / "icons"
 __all__ = ["Line2DBaseWidget", "MetadataLine2DWidget"]
 
 
@@ -122,10 +125,20 @@ class MetadataLine2DWidget(Line2DBaseWidget):
             call_button="plot",
         )
         
-        self.ray_index = 0
-        self.dot_index = 0
+        # self.ray_index = 0
+        # self.dot_index = 0
         self.layout().insertWidget(0, self._plugin_name_widget.native)
         self.layout().addWidget(self._key_selection_widget.native)
+
+        image_file_path = os.path.join(ICON_ROOT, "Select.png")
+        self.toolbar._add_new_button('Select', 'Span Selection', image_file_path, self.my_selection2)
+
+        # print('TOOLITEMS = ', self.toolbar.toolitems)
+
+        # self.toolbar._add_new_button('Select', 'Span Selection', 'select', 'my_selection')
+
+    def my_selection2(self):
+        print('I am myselection2!!')
 
     @property
     def x_axis_key(self) -> Optional[str]:

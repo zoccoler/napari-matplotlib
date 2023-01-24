@@ -184,7 +184,7 @@ class NapariNavigationToolbar(NavigationToolbar2QT):
         callback : function
             function to be called when button is clicked
         separator: bool
-            Whether to add a spacer before new button
+            Whether to add a separator before new button
         checkable: bool
             flag that indicates if button should or not be chackable
         """        
@@ -238,7 +238,7 @@ class NapariNavigationToolbar(NavigationToolbar2QT):
                 self._actions["zoom"].setIcon(
                     QIcon(os.path.join(ICON_ROOT, "Zoom.png"))
                 )
-        # If new button added and checkacble, update state and icon
+        # If new button added and checkable, update state and icon
         if button_name is not None:
             if button_name in self._actions:
                 if self._actions[button_name].isChecked():

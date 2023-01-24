@@ -9,6 +9,9 @@ from magicgui.widgets import ComboBox
 import os
 from pathlib import Path
 
+from qtpy.QtCore import Qt
+from qtpy.QtGui import QGuiApplication
+
 from .base import NapariMPLWidget
 from .util import Interval
 from matplotlib.widgets import SpanSelector
@@ -54,13 +57,17 @@ class Line2DBaseWidget(NapariMPLWidget):
         if len(y_data) < len(x_data):
             print("x_data bigger than y_data, plotting only first y_data")
         for i, y in enumerate(y_data):
+            label_name = y_axis_name
+            if len(y_data) > 1:
+                label_name +=  '_' + str(i)
             if len(x_data) == 1:
-                line = self.axes.plot(x_data[0], y, alpha=self._line_alpha)
+                line = self.axes.plot(x_data[0], y, alpha=self._line_alpha, label=label_name)
             else:
-                line = self.axes.plot(x_data[i], y, alpha=self._line_alpha)
+                line = self.axes.plot(x_data[i], y, alpha=self._line_alpha, label=label_name)
             self._lines += line
         self.axes.set_xlabel(x_axis_name)
         self.axes.set_ylabel(y_axis_name)
+        self.axes.legend()
 
     def _get_data(self) -> Tuple[List[np.ndarray], str, str]:
         """Get the plot data.
@@ -124,6 +131,8 @@ class MetadataLine2DWidget(Line2DBaseWidget):
         # Add span selection button to toolbar
         image_file_path = os.path.join(ICON_ROOT, "Select.png")
         self.toolbar._add_new_button('Select', 'Span Selection', image_file_path, self.enable_span_selector, True)
+        self._selected_lines = []
+        # self.span_selected = {}
 
         # Create horizontal Span Selector
         self._create_span_selector(ax=self.axes,
@@ -131,10 +140,11 @@ class MetadataLine2DWidget(Line2DBaseWidget):
             direction="horizontal",
             useblit=True,
             props=dict(alpha=0.5, facecolor="tab:orange"),
-            interactive=True,
+            interactive=False,
+            button=1,
             drag_from_anywhere=True)
 
-    # Callback function from toolbar span selection button
+    # Callback function from toolbar span selection toggle button
     def enable_span_selector(self):
         self.toolbar._update_buttons_checked(button_name = 'Select')
         self._enable_span_selector(active=self.toolbar.button_state)
@@ -142,27 +152,46 @@ class MetadataLine2DWidget(Line2DBaseWidget):
     
     def on_span_select(self, xmin, xmax):
         print(xmin, xmax)
+        self.clear()
+        self.draw()
+        modifiers = QGuiApplication.keyboardModifiers()
+
+        # If lines were drawn
         if len(self._lines) > 0:
-            x = self._lines[0].get_xdata()
-            
-            indmin, indmax = np.searchsorted(x, (xmin, xmax))
-            indmax = min(len(x) - 1, indmax)
+            # If 'shift' holded, do not clear previously selected lines
+            if modifiers == Qt.ShiftModifier:
+                pass
+            else:
+                self._selected_lines = []
 
-            region_x = x[indmin:indmax]
-            
+            # Get regions for each line
+            for i, line in enumerate(self._lines):
+                x = line.get_xdata()
+                indmin, indmax = np.searchsorted(x, (xmin, xmax))
+                indmax = min(len(x) - 1, indmax)
 
-            if len(region_x) >= 2:
-                for line in self._lines:
+                region_x = x[indmin:indmax]
+
+                # If at least 2 points in interval
+                if len(region_x) >= 2:
                     y = line.get_ydata()
                     region_y = y[indmin:indmax]
-                    print(region_x, region_y)
-                    self.axes.plot(region_x, region_y, 'o')
-                    self.canvas.draw_idle()
-                # line2.set_data(region_x, region_y)
-                # ax2.set_xlim(region_x[0], region_x[-1])
-                # ax2.set_ylim(region_y.min(), region_y.max())
-                # fig.canvas.draw_idle()
 
+                    # If 'shift' holded, concatenate to previous array
+                    # TO DO: test if data is not a numpy array
+                    if (modifiers == Qt.ShiftModifier) and (len(self._selected_lines) == len(self._lines)):
+                        # Plot and store selected points/line
+                        selected_line = self.axes.plot(np.concatenate((self._selected_lines[i].get_xdata(), region_x)),
+                        np.concatenate((self._selected_lines[i].get_ydata(), region_y)), 'o')
+                        self._selected_lines[i] = selected_line[0] # it needs index 0, otherwise inserts unitary list
+                    else:
+                        selected_line = self.axes.plot(region_x, region_y, 'o')
+                        self._selected_lines += selected_line
+            self.canvas.draw_idle()
+                    
+            # Store selected regions in new metadata key
+            self.layers[0].metadata[self.plugin_name_key]['selected_' + self.x_axis_key] = [line.get_xdata() for line in self._selected_lines]
+            self.layers[0].metadata[self.plugin_name_key]['selected_' + self.y_axis_key] = [line.get_ydata() for line in self._selected_lines]
 
     @property
     def x_axis_key(self) -> Optional[str]:

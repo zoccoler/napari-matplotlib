@@ -10,6 +10,7 @@ from matplotlib.backends.backend_qt5agg import (
 )
 from qtpy.QtGui import QIcon
 from qtpy.QtWidgets import QVBoxLayout, QWidget
+import warnings
 
 from .util import Interval
 
@@ -68,6 +69,9 @@ class NapariMPLWidget(QWidget):
 
         self.setup_callbacks()
         self.layers: List[napari.layers.Layer] = []
+
+        # List of cached axes
+        self.previous_axes_list = []
 
     # Accept any number of input layers by default
     n_layers_input = Interval(None, None)
@@ -141,6 +145,87 @@ class NapariMPLWidget(QWidget):
         This is a no-op, and is intended for derived classes to override.
         """
 
+    # def _change_row_axis(self):
+    #     # Get current gridspec and number of rows
+    #     gs = self.canvas.figure.axes[0].get_gridspec()
+    #     nrows = gs.get_geometry()[0]
+
+    def _remove_row_axis(self):
+        '''adds (or removes) axes and replots previous data'''
+        
+        # Get current gridspec and number of rows
+        gs = self.canvas.figure.axes[0].get_gridspec()
+        nrows = gs.get_geometry()[0]    
+        if nrows == 1:
+            print('Cannot remove first row axis.')
+            return 
+
+        # Create a new gridspec, with an increment to the number of rows
+        new_gs = self.canvas.figure.add_gridspec(gs.get_geometry()[0] - 1, gs.get_geometry()[1])
+
+        # Previous axes must be removed before adding new axes
+        # A copy of previous axes (and artists, like lines) is stored
+        # TO DO: store other artists besides lines (filter ax.get_children())
+        if len(self.canvas.figure.axes)>0:
+            self.previous_axes_list = []
+            for ax in self.canvas.figure.axes:
+                previous_axes = Cached_Axes()
+                for line in ax.lines:
+                    previous_line = Cached_Line(x = line.get_xdata(),
+                                            y = line.get_ydata(),
+                                            color = line.get_color())
+                    previous_axes._add_line(previous_line)
+                self.previous_axes_list.append(previous_axes)
+                ax.remove()
+        
+        # Add new axes and re-introduce previous lines (if any)
+        for i in range(nrows-1):
+            new_ax = self.canvas.figure.add_subplot(new_gs[i])
+            # new_ax.set_picker(True) # option for axis to be clickable/pickable
+            try:
+                for line in self.previous_axes_list[i].lines:
+                    new_ax.plot(line.x, line.y, color=line.color)
+            except IndexError:
+                pass
+        self.canvas.draw_idle()
+
+
+    def _add_row_axis(self):
+        '''adds (or removes) axes and replots previous data'''
+        print('Axes added')
+        # Get current gridspec and number of rows
+        gs = self.canvas.figure.axes[0].get_gridspec()
+        nrows = gs.get_geometry()[0]    
+
+        # Create a new gridspec, with an increment to the number of rows
+        new_gs = self.canvas.figure.add_gridspec(gs.get_geometry()[0] + 1, gs.get_geometry()[1])
+
+        # Previous axes must be removed before adding new axes
+        # A copy of previous axes (and artists, like lines) is stored
+        # TO DO: store other artists besides lines (filter ax.get_children())
+        if len(self.canvas.figure.axes)>0:
+            self.previous_axes_list = []
+            for ax in self.canvas.figure.axes:
+                previous_axes = Cached_Axes()
+                for line in ax.lines:
+                    previous_line = Cached_Line(x = line.get_xdata(),
+                                            y = line.get_ydata(),
+                                            color = line.get_color())
+                    previous_axes._add_line(previous_line)
+                self.previous_axes_list.append(previous_axes)
+                ax.remove()
+        # Add new axes and re-introduce previous lines (if any)
+        for i in range(nrows+1):
+            new_ax = self.canvas.figure.add_subplot(new_gs[i])
+            # new_ax.set_picker(True) # option for axis to be clickable/pickable
+            try:
+                for line in self.previous_axes_list[i].lines:
+                    new_ax.plot(line.x, line.y, color=line.color)
+            except IndexError:
+                pass
+        self.canvas.draw_idle()
+
+
     def _replace_toolbar_icons(self):
         # Modify toolbar icons and some tooltips
         for action in self.toolbar.actions():
@@ -159,6 +244,19 @@ class NapariMPLWidget(QWidget):
                 icon_path = os.path.join(ICON_ROOT, text + ".png")
                 action.setIcon(QIcon(icon_path))
 
+
+class Cached_Line:
+    '''Custom line class to store line data when axes are re-created'''
+    def __init__(self,x,y,color):
+        self.x = x
+        self.y = y
+        self.color = color
+class Cached_Axes(Cached_Line):
+    '''Custom axes class to store axes info when axes are re-created'''
+    def __init__(self):
+        self.lines = []
+    def _add_line(self,line):
+        self.lines.append(line)
 
 class NapariNavigationToolbar(NavigationToolbar2QT):
     """Custom Toolbar style for Napari."""

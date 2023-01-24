@@ -8,12 +8,12 @@ import matplotlib.pyplot as plt
 
 # Read video
 
-url_data = r"C:\Users\mazo260d\Documents\GitHub\metroid\Data\Cell1\videos_AP\vid1.tif"
+url_data = r"Z:\Programming\metroid-master\Data\Cell1\videos_AP\vid1.tif"
 video_AP1 = imread(url_data)
 video_AP1 = video_AP1[:, np.newaxis]
 frame_rate_AP1 = 55.78
 
-url_data = r"C:\Users\mazo260d\Documents\GitHub\metroid\Data\Cell1\video_EP\cellmask.tif"
+url_data = r"Z:\Programming\metroid-master\Data\Cell1\video_EP\cellmask.tif"
 mask = imread(url_data).astype(bool)
 
 frame_rate = 60 # Hz or fps
@@ -38,6 +38,14 @@ def get_masked_mean_over_time(timelapse_image, binary_mask):
 time_array_AP1 = np.arange(video_AP1.shape[0])/frame_rate_AP1
 AP_signal = get_masked_mean_over_time(video_AP1, mask)
 
+# Add extra signal
+print(time_array_AP1.shape)
+time_array_AP2 = time_array_AP1 * 1.1
+AP_signal2 = AP_signal * 1.005
+
+time_array_AP1 = np.stack((time_array_AP1, time_array_AP2), axis=0)
+AP_signal = np.stack((AP_signal, AP_signal2), axis=0)
+
 # Open napari viewer with video
 
 viewer = napari.Viewer()
@@ -56,6 +64,9 @@ metadata_AP1 = {}
 metadata_AP1['plugin1'] = {}
 metadata_AP1['plugin1']['signal'] = AP_signal
 metadata_AP1['plugin1']['time'] = time_array_AP1
+
+
+
 
 image_layer_AP.metadata = metadata_AP1
 

@@ -145,10 +145,22 @@ class NapariMPLWidget(QWidget):
         This is a no-op, and is intended for derived classes to override.
         """
 
-    # def _change_row_axis(self):
+    # def _change_grid_axes(self, new_rows=1, new_cols=1):
     #     # Get current gridspec and number of rows
     #     gs = self.canvas.figure.axes[0].get_gridspec()
-    #     nrows = gs.get_geometry()[0]
+    #     rows = gs.get_geometry()[0]
+    #     cols = gs.get_geometry()[1]
+
+
+    #     if (new_rows < 1) or (new_cols < 1):
+    #         print('Cannot remove first row or column axis.')
+    #         return
+    #     rows_diff = new_rows - rows
+    #     cols_diff = new_cols - cols
+    #     # Create a new gridspec, with an increment to the number of rows
+    #     new_gs = self.canvas.figure.add_gridspec(new_rows, new_cols)
+    #     # Work in progress...
+
 
     def _remove_row_axis(self):
         '''adds (or removes) axes and replots previous data'''

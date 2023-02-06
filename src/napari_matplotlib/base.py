@@ -12,6 +12,7 @@ from matplotlib.backend_bases import NavigationToolbar2
 from qtpy.QtGui import QIcon
 from qtpy.QtWidgets import QVBoxLayout, QWidget, QAction, QLabel
 from qtpy import QtCore, QtWidgets
+from matplotlib.backends.qt_compat import  _enum, _to_int
 
 from .util import Interval
 
@@ -208,9 +209,17 @@ class NapariNavigationToolbar(NavigationToolbar2QT):
         if tooltip_text is not None:
             a.setToolTip(tooltip_text)
        
-        ## Rebuild spacer at the very end of toolbar (reuse 'locLabel' created by __init__ from NavigationToolbar2QT)
+        ## Rebuild spacer at the very end of toolbar (re-create 'locLabel' created by __init__ from NavigationToolbar2QT)
         # https://github.com/matplotlib/matplotlib/blob/85d7bb370186f2fa86df6ecc3d5cd064eb7f0b45/lib/matplotlib/backends/backend_qt.py#L631
         if self.tb_coordinates:
+            self.locLabel = QtWidgets.QLabel("", self)
+            self.locLabel.setAlignment(QtCore.Qt.AlignmentFlag(
+                _to_int(_enum("QtCore.Qt.AlignmentFlag").AlignRight) |
+                _to_int(_enum("QtCore.Qt.AlignmentFlag").AlignVCenter)))
+            self.locLabel.setSizePolicy(QtWidgets.QSizePolicy(
+                _enum("QtWidgets.QSizePolicy.Policy").Expanding,
+                _enum("QtWidgets.QSizePolicy.Policy").Ignored,
+            ))
             labelAction = self.addWidget(self.locLabel)
             labelAction.setVisible(True)
 

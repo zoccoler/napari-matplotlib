@@ -44,9 +44,7 @@ class Line2DBaseWidget(NapariMPLWidget):
         Plot the currently selected layers.
         """
         data, x_axis_name, y_axis_name = self._get_data()
-        ################
-        # Somewhere here I must get to which axes to plot
-        ###############
+
         if len(data) == 0:
             # don't plot if there isn't data
             return
@@ -89,7 +87,7 @@ class Line2DBaseWidget(NapariMPLWidget):
         *args, **kwargs):
         # Create span selector
         self.span_selector = SpanSelector(**kwargs)
-        self.span_selector.active = False
+        self.span_selector.active = active
 
     def _enable_span_selector(self, active=False):
         if self.span_selector is not None:
@@ -148,10 +146,9 @@ class MetadataLine2DWidget(Line2DBaseWidget):
     def enable_span_selector(self):
         self.toolbar._update_buttons_checked(button_name = 'Select')
         self._enable_span_selector(active=self.toolbar.button_state)
-        print('Am I checked? ', self.toolbar._actions['Select'].isChecked(), self.toolbar.button_state)
+
     
     def on_span_select(self, xmin, xmax):
-        print(xmin, xmax)
         self.clear()
         self.draw()
         modifiers = QGuiApplication.keyboardModifiers()

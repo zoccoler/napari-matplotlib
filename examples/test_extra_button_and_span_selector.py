@@ -39,7 +39,6 @@ time_array_AP1 = np.arange(video_AP1.shape[0])/frame_rate_AP1
 AP_signal = get_masked_mean_over_time(video_AP1, mask)
 
 # Add extra signal
-print(time_array_AP1.shape)
 time_array_AP2 = time_array_AP1 * 1.1
 AP_signal2 = AP_signal * 1.005
 

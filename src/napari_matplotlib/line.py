@@ -32,6 +32,7 @@ class Line2DBaseWidget(NapariMPLWidget):
         self.update_layers(None)
 
         self.span_selector = None
+        self.legend_selection = False
 
     def clear(self) -> None:
         """
@@ -65,7 +66,13 @@ class Line2DBaseWidget(NapariMPLWidget):
             self._lines += line
         self.axes.set_xlabel(x_axis_name)
         self.axes.set_ylabel(y_axis_name)
-        self.axes.legend()
+        # Set-up legend
+        self.legend = self.axes.legend(fancybox=True, shadow=True)
+        if self.legend_selection:
+            self.legend2line = {}  # Will map legend lines to original lines.
+            for legend_line, original_line in zip(self.legend.get_lines(), self._lines):
+                legend_line.set_picker(True)  # Enable picking on the legend line.
+                self.legend2line[legend_line] = original_line
 
     def _get_data(self) -> Tuple[List[np.ndarray], str, str]:
         """Get the plot data.
@@ -83,6 +90,14 @@ class Line2DBaseWidget(NapariMPLWidget):
         """
         raise NotImplementedError
 
+    def _on_pick(self, event):
+        """Callback function to pick event.
+
+        This must be implemented on the subclass.
+
+        """
+        raise NotImplementedError
+
     def _create_span_selector(self, active=False,
         *args, **kwargs):
         # Create span selector
@@ -95,7 +110,11 @@ class Line2DBaseWidget(NapariMPLWidget):
                 self.span_selector.active = True
             else:
                 self.span_selector.active = False
-
+    
+    def _enable_legend_selection(self, active=False):
+        self.legend_selection = active
+        if active:
+            self.canvas.figure.canvas.mpl_connect('pick_event', self._on_pick)
 
     # def _on_span_select(self, xmin, xmax):
     #     """
@@ -129,6 +148,7 @@ class MetadataLine2DWidget(Line2DBaseWidget):
         # Add span selection button to toolbar
         image_file_path = os.path.join(ICON_ROOT, "Select.png")
         self.toolbar._add_new_button('Select', 'Span Selection', image_file_path, self.enable_span_selector, True)
+        self._selected_span_intervals = []
         self._selected_lines = []
         # self.span_selected = {}
 
@@ -142,12 +162,42 @@ class MetadataLine2DWidget(Line2DBaseWidget):
             button=1,
             drag_from_anywhere=True)
 
+        # Enable legend selection
+        self._enable_legend_selection(True)
+
     # Callback function from toolbar span selection toggle button
     def enable_span_selector(self):
         self.toolbar._update_buttons_checked(button_name = 'Select')
         self._enable_span_selector(active=self.toolbar.button_state)
 
-    
+    def _on_pick(self, event):
+        modifiers = QGuiApplication.keyboardModifiers()
+        # If 'shift' holded, do not clear previously selected lines
+        if modifiers == Qt.ShiftModifier:
+            pass
+        else:
+            self._selected_lines = []
+        # On the pick event, find the original line corresponding to the legend
+        # proxy line, and make it visible, while other become invisible.
+        selected_legend_line = event.artist
+        selected_original_line = self.legend2line[selected_legend_line]
+
+        for line, legend_line in zip(self._lines, self.legend.get_lines()):
+            if line == selected_original_line:
+                # Change the alpha on the line in the legend
+                legend_line.set_alpha(1.0)
+                line.set_visible(True)
+                # Add line to selected lines
+                if line not in self._selected_lines:
+                    self._selected_lines.append(line)
+            else:
+                # only hide if line was not pre-selected
+                if line not in self._selected_lines:
+                    legend_line.set_alpha(0.2)
+                    line.set_visible(False)
+        print('selected_lines = ', self._selected_lines)
+        self.canvas.figure.canvas.draw()
+
     def on_span_select(self, xmin, xmax):
         self.clear()
         self.draw()
@@ -155,11 +205,11 @@ class MetadataLine2DWidget(Line2DBaseWidget):
 
         # If lines were drawn
         if len(self._lines) > 0:
-            # If 'shift' holded, do not clear previously selected lines
+            # If 'shift' holded, do not clear previously selected intervals
             if modifiers == Qt.ShiftModifier:
                 pass
             else:
-                self._selected_lines = []
+                self._selected_span_intervals = []
 
             # Get regions for each line
             for i, line in enumerate(self._lines):
@@ -176,19 +226,19 @@ class MetadataLine2DWidget(Line2DBaseWidget):
 
                     # If 'shift' holded, concatenate to previous array
                     # TO DO: test if data is not a numpy array
-                    if (modifiers == Qt.ShiftModifier) and (len(self._selected_lines) == len(self._lines)):
+                    if (modifiers == Qt.ShiftModifier) and (len(self._selected_span_intervals) == len(self._lines)):
                         # Plot and store selected points/line
-                        selected_line = self.axes.plot(np.concatenate((self._selected_lines[i].get_xdata(), region_x)),
-                        np.concatenate((self._selected_lines[i].get_ydata(), region_y)), 'o')
-                        self._selected_lines[i] = selected_line[0] # it needs index 0, otherwise inserts unitary list
+                        selected_interval = self.axes.plot(np.concatenate((self._selected_span_intervals[i].get_xdata(), region_x)),
+                        np.concatenate((self._selected_span_intervals[i].get_ydata(), region_y)), 'o')
+                        self._selected_span_intervals[i] = selected_interval[0] # it needs index 0, otherwise inserts unitary list
                     else:
                         selected_line = self.axes.plot(region_x, region_y, 'o')
-                        self._selected_lines += selected_line
+                        self._selected_span_intervals += selected_interval
             self.canvas.draw_idle()
                     
             # Store selected regions in new metadata key
-            self.layers[0].metadata[self.plugin_name_key]['selected_' + self.x_axis_key] = [line.get_xdata() for line in self._selected_lines]
-            self.layers[0].metadata[self.plugin_name_key]['selected_' + self.y_axis_key] = [line.get_ydata() for line in self._selected_lines]
+            self.layers[0].metadata[self.plugin_name_key]['selected_interval_' + self.x_axis_key] = [line.get_xdata() for line in self._selected_span_intervals]
+            self.layers[0].metadata[self.plugin_name_key]['selected_interval_' + self.y_axis_key] = [line.get_ydata() for line in self._selected_span_intervals]
 
     @property
     def x_axis_key(self) -> Optional[str]:
@@ -337,76 +387,3 @@ def warp_to_list(data):
     if isinstance(data, pd.DataFrame):
         data = data.T.values.tolist()
     return data
-
-
-## TO DO: Add method to add/remove axes subplots (and add new dropdowns for y axis)
-    
-# class My_Line:
-#     '''Custom line class to store line data when axes are re-created'''
-#     def __init__(self,x,y,color):
-#         self.x = x
-#         self.y = y
-#         self.color = color
-# class My_Axes(My_Line):
-#     '''Custom axes class to store axes info when axes are re-created'''
-#     def __init__(self):
-#         self.lines = []
-#     def _add_line(self,line):
-#         self.lines.append(line)
-
-# class MplCanvas(FigureCanvas):
-#     """
-#     Defines the canvas of the matplotlib window
-#     """
-#     def __init__(self):
-#         self.fig = Figure()                         # create figure
-#         self.previous_axes_list = []
-#         self._add_axes(1)
-#         FigureCanvas.__init__(self, self.fig)       # initialize canvas
-#         FigureCanvas.setSizePolicy(self, QtWidgets.QSizePolicy.Expanding,
-#                                     QtWidgets.QSizePolicy.Expanding)
-#         FigureCanvas.updateGeometry(self)
-#         self.previous_axes_list = []
-
-#     def _match_napari_layout(self, idx,color='white'):
-#         self.fig.set_facecolor('#00000000')
-#         # changing color of plot background to napari main window color
-#         self.fig.axes[idx].set_facecolor('#00000000')
-
-#         # changing colors of all axis
-#         self.fig.axes[idx].spines['bottom'].set_color(color)
-#         self.fig.axes[idx].spines['top'].set_color(color)
-#         self.fig.axes[idx].spines['right'].set_color(color)
-#         self.fig.axes[idx].spines['left'].set_color(color)
-
-#         self.fig.axes[idx].xaxis.label.set_color(color)
-#         self.fig.axes[idx].yaxis.label.set_color(color)
-
-#         # changing colors of axis labels
-#         self.fig.axes[idx].tick_params(axis='x', colors=color)
-#         self.fig.axes[idx].tick_params(axis='y', colors=color)
-
-#     def _add_axes(self,N):
-#         '''adds (or removes) axes and replots previous data'''
-#         if len(self.fig.axes)>0:
-#             self.previous_axes_list = []
-#             for ax in self.fig.axes:
-#                 previous_axes = My_Axes()
-#                 for line in ax.lines:
-#                     previous_line = My_Line(x = line.get_xdata(),
-#                                             y = line.get_ydata(),
-#                                             color = line.get_color())
-#                     previous_axes._add_line(previous_line)
-#                 self.previous_axes_list.append(previous_axes)
-#                 ax.remove()
-
-#         gs = self.fig.add_gridspec(N, 1,hspace=0)
-#         for i in range(N):
-#             ax1 = self.fig.add_subplot(gs[i])
-#             ax1.set_picker(True)
-#             try:
-#                 for line in self.previous_axes_list[i].lines:
-#                     ax1.plot(line.x,line.y,color=line.color)
-#             except IndexError:
-#                 pass
-#             self._match_napari_layout(i)

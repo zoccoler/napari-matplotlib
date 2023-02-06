@@ -21,14 +21,26 @@ class Line2DBaseWidget(NapariMPLWidget):
     def __init__(self, napari_viewer: napari.viewer.Viewer):
         super().__init__(napari_viewer)
 
-        self.axes = self.canvas.figure.subplots()
+        # Create an axes reference as a numpy array (it also preserves axes shape information)
+        self.axes = np.asarray([self.canvas.figure.subplots()]).reshape((1,1))
+        self.rows, self.cols = 1, 1
         self.update_layers(None)
 
     def clear(self) -> None:
         """
         Clear the axes.
         """
-        self.axes.clear()
+        for i in range(self.rows):
+            for j in range(self.cols):
+                self.axes[i,j].clear()
+
+    def update_axes(self):
+        """
+        Update local axes reference.
+        """
+        gs = self.canvas.figure.axes[0].get_gridspec()
+        self.rows, self.cols = gs.get_geometry()[0], gs.get_geometry()[1]
+        self.axes = np.asarray([self.canvas.figure.axes]).reshape((self.rows, self.cols))
 
     def draw(self) -> None:
         """
@@ -44,17 +56,20 @@ class Line2DBaseWidget(NapariMPLWidget):
         x_data = data[0]
         y_data = data[1]
 
+        # PLOTTING ONLY IN FIRST AXIS FOR NOW
+        ax = self.axes[0, 0]
+
         if len(y_data) < len(x_data):
             print("x_data bigger than y_data, plotting only first y_data")
         for i, y in enumerate(y_data):
             if len(x_data) == 1:
-                line = self.axes.plot(x_data[0], y, alpha=self._line_alpha)
+                line = ax.plot(x_data[0], y, alpha=self._line_alpha)
             else:
-                line = self.axes.plot(x_data[i], y, alpha=self._line_alpha)
+                line = ax.plot(x_data[i], y, alpha=self._line_alpha)
             self._lines += line
-
-        self.axes.set_xlabel(x_axis_name)
-        self.axes.set_ylabel(y_axis_name)
+        
+        ax.set_xlabel(x_axis_name)
+        ax.set_ylabel(y_axis_name)
 
     def _get_data(self) -> Tuple[List[np.ndarray], str, str]:
         """Get the plot data.
@@ -71,6 +86,61 @@ class Line2DBaseWidget(NapariMPLWidget):
             The label to display on the y axis
         """
         raise NotImplementedError
+
+
+    def _change_grid_axes(self, new_rows=1, new_cols=1):
+        """
+        Change subplots grid to a new shape.
+
+        Adds or removes subplots depending on new number of rowns and columns.
+        Previous line/dot plots are kept. However, if a subplot with data is removed and then
+        added again, previous plotted data is lost.
+
+        Parameters
+        ----------
+        new_rows : int
+            The new number of rows in a plot.
+        new_cols : int
+            The new number of columns in a plot.
+        """
+
+        if (new_rows < 1) or (new_cols < 1):
+            print('Cannot remove first row or column axis.')
+            return
+        # Create a new gridspec, with an increment to the number of rows
+        new_gs = self.canvas.figure.add_gridspec(new_rows, new_cols)
+        # Previous axes must be removed before adding new axes
+        # A copy of previous axes (and artists, like lines) is stored
+        # TO DO: store other artists besides lines (filter ax.get_children())
+
+        previous_axes_array = np.empty((self.rows, self.cols), dtype=object)
+        for i in range(self.rows):
+            for j in range(self.cols):
+                previous_axes = Cached_Axes()
+                for line in self.canvas.figure.axes[i+j].lines:
+                    previous_line = Cached_Line(x = line.get_xdata(),
+                                            y = line.get_ydata(),
+                                            color = line.get_color())
+                    previous_axes._add_line(previous_line)
+                previous_axes_array[i, j] = previous_axes
+                
+        # Remove axes from figure
+        for ax in self.canvas.figure.axes:
+            ax.remove()
+
+        # Add new axes and re-introduce previous lines (if any)
+        for i in range(new_rows):
+            for j in range(new_cols):
+                new_ax = self.canvas.figure.add_subplot(new_gs[i, j])
+            # new_ax.set_picker(True) # option for axis to be clickable/pickable
+                try:
+                    for line in previous_axes_array[i, j].lines:
+                        new_ax.plot(line.x, line.y, color=line.color)
+                except IndexError:
+                    pass
+        self.update_axes()
+        self.canvas.draw_idle()
+
 
 class MetadataLine2DWidget(Line2DBaseWidget):
     n_layers_input = Interval(1, 1)
@@ -243,4 +313,15 @@ def warp_to_list(data):
         data = data.T.values.tolist()
     return data
 
-    
+class Cached_Line:
+    '''Custom line class to store line data when axes are re-created'''
+    def __init__(self,x,y,color):
+        self.x = x
+        self.y = y
+        self.color = color
+class Cached_Axes(Cached_Line):
+    '''Custom axes class to store axes info when axes are re-created'''
+    def __init__(self):
+        self.lines = []
+    def _add_line(self,line):
+        self.lines.append(line)

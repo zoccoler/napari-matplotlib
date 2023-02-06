@@ -11,10 +11,13 @@ viewer.add_image(np.arange(128).reshape(2,8,8), metadata = metadata)
 
 plotter_widget = MetadataLine2DWidget(viewer)
 viewer.window.add_dock_widget(plotter_widget)
-# plotter_widget.draw()
-# plotter_widget.canvas.draw_idle()
-plotter_widget._add_row_axis()
 
-plotter_widget._remove_row_axis()
+plotter_widget._change_grid_axes(2,2)
 
-a=1
+plotter_widget._change_grid_axes(1,2)
+
+plotter_widget._change_grid_axes(2,1)
+
+plotter_widget._change_grid_axes(1,1)
+
+napari.run()

@@ -221,7 +221,8 @@ class MetadataLine2DWidget(Line2DBaseWidget):
         self._enable_mouse_clicks(active=True)
 
     def _on_click(self, event):
-        if event.button==3: #right click
+        # Right click clears selections
+        if event.button==3: 
             self._clear_selections()
 
     def _clear_selections(self):
@@ -235,7 +236,6 @@ class MetadataLine2DWidget(Line2DBaseWidget):
                 line.set_visible(True)
         # Clear span selections if span selector exists
         if self.span_selector is not None:
-            # self._selected_span_intervals = []
             self._on_span_select(0,0)
         self.canvas.figure.canvas.draw()
 
@@ -269,7 +269,6 @@ class MetadataLine2DWidget(Line2DBaseWidget):
                 if line not in self._selected_lines:
                     legend_line.set_alpha(0.2)
                     line.set_visible(False)
-        print('selected_lines = ', self._selected_lines)
         self.canvas.figure.canvas.draw()
 
     def _on_pick(self, event):

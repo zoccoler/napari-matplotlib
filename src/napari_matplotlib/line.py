@@ -233,7 +233,11 @@ class MetadataLine2DWidget(Line2DBaseWidget):
                 legend_line.set_alpha(self._line_alpha)
                 # Restore line visibility
                 line.set_visible(True)
-            self.canvas.figure.canvas.draw()
+        # Clear span selections if span selector exists
+        if self.span_selector is not None:
+            # self._selected_span_intervals = []
+            self._on_span_select(0,0)
+        self.canvas.figure.canvas.draw()
 
     # Callback function from toolbar span selection toggle button
     def enable_span_selector(self):

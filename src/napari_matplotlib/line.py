@@ -34,6 +34,8 @@ class Line2DBaseWidget(NapariMPLWidget):
         # Initial states of interactive tools.
         self.span_selector = None
         self.legend_selection = False
+        self.cid = None
+        
 
     def clear(self) -> None:
         """
@@ -143,6 +145,37 @@ class Line2DBaseWidget(NapariMPLWidget):
             # `_on_pick` callback function must be implemented
             self.canvas.figure.canvas.mpl_connect('pick_event', self._on_pick)
 
+    def _enable_mouse_clicks(self, active=False):
+        """
+        Enable/disable mouse clicks.
+
+        Link mouse clicks to `onclick` callback function
+        """
+        if active:
+            self.cid = self.canvas.figure.canvas.mpl_connect('button_press_event', self._on_click)
+        else:
+            self.canvas.figure.canvas.mpl_disconnect(self.cid)
+
+    def _clear_selections(self):
+        """
+        This must be implemented on the subclass.
+
+        Clear plot selections.
+        """
+        raise NotImplementedError
+
+    def _on_click(self, event):
+        """
+        Callback function from mouse clicks.
+
+        By default, print click info 
+        (see https://matplotlib.org/stable/users/explain/event_handling.html#event-connections)
+        """
+        if event.xdata is not None:
+            print('%s click: button=%d, x=%d, y=%d, xdata=%f, ydata=%f' %
+          ('double' if event.dblclick else 'single', event.button,
+           event.x, event.y, event.xdata, event.ydata))
+
 
 class MetadataLine2DWidget(Line2DBaseWidget):
     n_layers_input = Interval(1, 1)
@@ -184,6 +217,23 @@ class MetadataLine2DWidget(Line2DBaseWidget):
 
         # Enable legend selection
         self._enable_legend_selection(True)
+        # Enable mouse clicks
+        self._enable_mouse_clicks(active=True)
+
+    def _on_click(self, event):
+        if event.button==3: #right click
+            self._clear_selections()
+
+    def _clear_selections(self):
+        # Clear legend line selection
+        if self.legend_selection:
+            self._selected_lines = []
+            for line, legend_line in zip(self._lines, self.legend.get_lines()):
+                # Restore the alpha on the line in the legend
+                legend_line.set_alpha(self._line_alpha)
+                # Restore line visibility
+                line.set_visible(True)
+            self.canvas.figure.canvas.draw()
 
     # Callback function from toolbar span selection toggle button
     def enable_span_selector(self):

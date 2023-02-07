@@ -8,7 +8,7 @@ from magicgui import magicgui
 from magicgui.widgets import ComboBox
 import os
 from pathlib import Path
-
+from matplotlib.lines import Line2D
 from qtpy.QtCore import Qt
 from qtpy.QtGui import QGuiApplication
 
@@ -31,6 +31,7 @@ class Line2DBaseWidget(NapariMPLWidget):
         self.axes = self.canvas.figure.subplots()
         self.update_layers(None)
 
+        # Initial states of interactive tools.
         self.span_selector = None
         self.legend_selection = False
 
@@ -43,6 +44,8 @@ class Line2DBaseWidget(NapariMPLWidget):
     def draw(self) -> None:
         """
         Plot the currently selected layers.
+
+        Get data and axes names. Plot every y_data vs x_data.
         """
         data, x_axis_name, y_axis_name = self._get_data()
 
@@ -66,8 +69,10 @@ class Line2DBaseWidget(NapariMPLWidget):
             self._lines += line
         self.axes.set_xlabel(x_axis_name)
         self.axes.set_ylabel(y_axis_name)
-        # Set-up legend
         self.legend = self.axes.legend(fancybox=True, shadow=True)
+
+        # If legend_selection is enabled, store relation between legend lines and lines
+        # and makes legend lines pickable
         if self.legend_selection:
             self.legend2line = {}  # Will map legend lines to original lines.
             for legend_line, original_line in zip(self.legend.get_lines(), self._lines):
@@ -94,35 +99,50 @@ class Line2DBaseWidget(NapariMPLWidget):
         """Callback function to pick event.
 
         This must be implemented on the subclass.
+        Must filter artists if multiple can be picked by evaluating `event.artist` type.
 
         """
         raise NotImplementedError
 
     def _create_span_selector(self, active=False,
         *args, **kwargs):
-        # Create span selector
+        """
+        Create span selector.
+
+        Also, define inital state.
+        """
         self.span_selector = SpanSelector(**kwargs)
         self.span_selector.active = active
 
     def _enable_span_selector(self, active=False):
+        """
+        Enable or disable span selector.
+        
+        If span selector was created, enable or disable it.
+        """
         if self.span_selector is not None:
-            if active:
-                self.span_selector.active = True
-            else:
-                self.span_selector.active = False
+            self.span_selector.active = active
+
+    def _on_span_select(self, xmin, xmax):
+        """
+        This must be implemented on the subclass.
+
+        Get xmin and xmax of selection
+        """
+        raise NotImplementedError
     
     def _enable_legend_selection(self, active=False):
+        """
+        Enable or disable making legend pickable.
+
+        This activates a global 'pick_event' for all artists.
+        Filter picked artist in `_on_pick` callback function.
+        """
         self.legend_selection = active
         if active:
+            # `_on_pick` callback function must be implemented
             self.canvas.figure.canvas.mpl_connect('pick_event', self._on_pick)
 
-    # def _on_span_select(self, xmin, xmax):
-    #     """
-    #     This must be implemented on the subclass.
-
-    #     Get xmin and xmax of selection
-    #     """
-    #     raise NotImplementedError
 
 class MetadataLine2DWidget(Line2DBaseWidget):
     n_layers_input = Interval(1, 1)
@@ -148,13 +168,13 @@ class MetadataLine2DWidget(Line2DBaseWidget):
         # Add span selection button to toolbar
         image_file_path = os.path.join(ICON_ROOT, "Select.png")
         self.toolbar._add_new_button('Select', 'Span Selection', image_file_path, self.enable_span_selector, True)
+        # Cache lists
         self._selected_span_intervals = []
         self._selected_lines = []
-        # self.span_selected = {}
 
         # Create horizontal Span Selector
         self._create_span_selector(ax=self.axes,
-            onselect=self.on_span_select,
+            onselect=self._on_span_select,
             direction="horizontal",
             useblit=True,
             props=dict(alpha=0.5, facecolor="tab:orange"),
@@ -170,7 +190,7 @@ class MetadataLine2DWidget(Line2DBaseWidget):
         self.toolbar._update_buttons_checked(button_name = 'Select')
         self._enable_span_selector(active=self.toolbar.button_state)
 
-    def _on_pick(self, event):
+    def _on_legend_selection(self, selected_artist):
         modifiers = QGuiApplication.keyboardModifiers()
         # If 'shift' holded, do not clear previously selected lines
         if modifiers == Qt.ShiftModifier:
@@ -179,7 +199,7 @@ class MetadataLine2DWidget(Line2DBaseWidget):
             self._selected_lines = []
         # On the pick event, find the original line corresponding to the legend
         # proxy line, and make it visible, while other become invisible.
-        selected_legend_line = event.artist
+        selected_legend_line = selected_artist
         selected_original_line = self.legend2line[selected_legend_line]
 
         for line, legend_line in zip(self._lines, self.legend.get_lines()):
@@ -198,7 +218,14 @@ class MetadataLine2DWidget(Line2DBaseWidget):
         print('selected_lines = ', self._selected_lines)
         self.canvas.figure.canvas.draw()
 
-    def on_span_select(self, xmin, xmax):
+    def _on_pick(self, event):
+        if isinstance(event.artist, Line2D):
+            # Checks that picked line is in legend
+            # https://stackoverflow.com/a/71818208/11885372
+            if event.artist not in event.artist.axes.get_children():
+                self._on_legend_selection(event.artist)
+
+    def _on_span_select(self, xmin, xmax):
         self.clear()
         self.draw()
         modifiers = QGuiApplication.keyboardModifiers()
@@ -232,7 +259,7 @@ class MetadataLine2DWidget(Line2DBaseWidget):
                         np.concatenate((self._selected_span_intervals[i].get_ydata(), region_y)), 'o')
                         self._selected_span_intervals[i] = selected_interval[0] # it needs index 0, otherwise inserts unitary list
                     else:
-                        selected_line = self.axes.plot(region_x, region_y, 'o')
+                        selected_interval = self.axes.plot(region_x, region_y, 'o')
                         self._selected_span_intervals += selected_interval
             self.canvas.draw_idle()
                     

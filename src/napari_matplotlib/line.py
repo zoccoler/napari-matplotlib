@@ -16,6 +16,8 @@ from .base import NapariMPLWidget
 from .util import Interval
 from matplotlib.widgets import SpanSelector
 
+import seaborn as sns
+
 ICON_ROOT = Path(__file__).parent / "icons"
 __all__ = ["Line2DBaseWidget", "MetadataLine2DWidget"]
 
@@ -319,7 +321,149 @@ class MetadataLine2DWidget(Line2DBaseWidget):
         # reset the axis keys
         self._x_axis_key = None
         self._y_axis_key = None
+
+class FeaturesLine2DWidget(Line2DBaseWidget):
+    n_layers_input = Interval(1, 1)
+    # All layers that have a .features attributes
+    input_layer_types = (
+        napari.layers.Labels,
+        napari.layers.Points,
+        napari.layers.Shapes,
+        napari.layers.Tracks,
+        napari.layers.Vectors,
+    )
+
+    def __init__(self, napari_viewer: napari.viewer.Viewer,
+    show_dropdowns=True):
+        super().__init__(napari_viewer)
+        if show_dropdowns:
+            self._key_selection_widget = magicgui(
+                self._set_axis_keys,
+                x_axis_key={"choices": self._get_valid_axis_keys},
+                y_axis_key={"choices": self._get_valid_axis_keys},
+                call_button="plot",
+            )
+
+            self.layout().addWidget(self._key_selection_widget.native)
+
+    @property
+    def x_axis_key(self) -> Optional[str]:
+        """Key to access x axis data from the FeaturesTable"""
+        return self._x_axis_key
+
+    @x_axis_key.setter
+    def x_axis_key(self, key: Optional[str]) -> None:
+        self._x_axis_key = key
+        self._draw()
+
+    @property
+    def y_axis_key(self) -> Optional[str]:
+        """Key to access y axis data from the FeaturesTable"""
+        return self._y_axis_key
+
+    @y_axis_key.setter
+    def y_axis_key(self, key: Optional[str]) -> None:
+        self._y_axis_key = key
+        self._draw()
+
+    def _set_axis_keys(self, x_axis_key: str, y_axis_key: str) -> None:
+        """Set both axis keys and then redraw the plot"""
+        self._x_axis_key = x_axis_key
+        self._y_axis_key = y_axis_key
+        self._draw()
+
+    def _get_valid_axis_keys(
+        self, combo_widget: Optional[ComboBox] = None
+    ) -> List[str]:
+        """
+        Get the valid axis keys from the layer FeatureTable.
+
+        Returns
+        -------
+        axis_keys : List[str]
+            The valid axis keys in the FeatureTable. If the table is empty
+            or there isn't a table, returns an empty list.
+        """
+        if len(self.layers) == 0 or not (hasattr(self.layers[0], "features")):
+            return []
+        else:
+            return self.layers[0].features.keys()
+
+    def _get_data(self) -> Tuple[List[np.ndarray], str, str]:
+        """Get the plot data.
+
+        Returns
+        -------
+        data : List[np.ndarray]
+            List contains X and Y columns from the FeatureTable. Returns
+            an empty array if nothing to plot.
+        x_axis_name : str
+            The title to display on the x axis. Returns
+            an empty string if nothing to plot.
+        y_axis_name: str
+            The title to display on the y axis. Returns
+            an empty string if nothing to plot.
+        """
+        if not hasattr(self.layers[0], "features"):
+            # if the selected layer doesn't have a featuretable,
+            # skip draw
+            return [], "", ""
+
+        feature_table = self.layers[0].features
+
+        if (
+            (len(feature_table) == 0)
+            or (self.x_axis_key is None)
+            or (self.y_axis_key is None)
+        ):
+            return [], "", ""
+        labels = feature_table.label
+        data_x = feature_table[self.x_axis_key]
+        data_y = feature_table[self.y_axis_key]
+        data = [data_x, data_y, labels]
+
+        x_axis_name = self.x_axis_key.replace("_", " ")
+        y_axis_name = self.y_axis_key.replace("_", " ")
+
+        return data, x_axis_name, y_axis_name
+
+    def _on_update_layers(self) -> None:
+        """
+        This is called when the layer selection changes by
+        ``self.update_layers()``.
+        """
+        if hasattr(self, "_key_selection_widget"):
+            self._key_selection_widget.reset_choices()
+
+        # reset the axis keys
+        self._x_axis_key = None
+        self._y_axis_key = None
+
+    def draw(self) -> None:
+        """
+        Plot the currently selected layers.
+        """
+        data, x_axis_name, y_axis_name = self._get_data()
         
+        print(data, type(data), len(data))
+        if len(data) == 0:
+            # don't plot if there isn't data
+            return
+        self._lines = []
+        x_data = data[0]
+        y_data = data[1]
+        labels = data[2]
+
+        sub_table = pd.concat(data, axis=1)
+        sns.lineplot(data=sub_table, x=self.x_axis_key, y=self.y_axis_key, ax = self.axes)        
+
+        self.axes.set_xlabel(x_axis_name)
+        self.axes.set_ylabel(y_axis_name)
+
+        self.canvas.draw()
+
+
+
 def warp_to_list(data):
     if isinstance(data, list):
         return data

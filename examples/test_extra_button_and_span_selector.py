@@ -9,11 +9,13 @@ import matplotlib.pyplot as plt
 # Read video
 
 url_data = r"C:\Users\mazo260d\Documents\GitHub\metroid\Data\Cell1\videos_AP\vid1.tif"
+url_data = r"Z:\Programming\metroid-master\Data\Cell1\videos_AP\vid1.tif"
 video_AP1 = imread(url_data)
 video_AP1 = video_AP1[:, np.newaxis]
 frame_rate_AP1 = 55.78
 
 url_data = r"C:\Users\mazo260d\Documents\GitHub\metroid\Data\Cell1\video_EP\cellmask.tif"
+url_data = r"Z:\Programming\metroid-master\Data\Cell1\video_EP\cellmask.tif"
 mask = imread(url_data).astype(bool)
 
 frame_rate = 60 # Hz or fps

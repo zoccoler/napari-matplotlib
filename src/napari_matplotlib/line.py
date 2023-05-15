@@ -54,8 +54,12 @@ class Line2DBaseWidget(NapariMPLWidget):
 
         # Initial states of interactive tools.
         self.span_selector = None
-        self.legend_selection = False
-        self.cid = None
+        self.span_selection_active = False
+
+        self.legend_selection_active = False
+
+        self.pick_event_connection_id = None
+        self.mouse_click_event_connection_id = None
 
     def clear(self) -> None:
         """
@@ -91,20 +95,20 @@ class Line2DBaseWidget(NapariMPLWidget):
                 # line = self.axes.plot(
                 #     x_data[0], y, alpha=self._line_alpha, label=label_name)
             else:
-                line2 = InteractiveLine2D(
+                line = InteractiveLine2D(
                     xdata=x_data[i], ydata=y, alpha=self._line_alpha, label=label_name, linestyle='-', picker=True, pickradius=5)
-                self.axes.add_line(line2)
+                self.axes.add_line(line)
                 # line = self.axes.plot(
                 #     x_data[i], y, alpha=self._line_alpha, label=label_name, color='red', linestyle='--')
-            # self._lines += [line]
+            self._lines += [line]
         self.axes.set_xlabel(x_axis_name)
         self.axes.set_ylabel(y_axis_name)
         self.axes.autoscale(enable=True, axis='both', tight=True)
-        self.legend = self.axes.legend(fancybox=True, shadow=True)
 
         # If legend_selection is enabled, store relation between legend lines and lines
         # and makes legend lines pickable
-        if self.legend_selection:
+        if self.legend_selection_active:
+            self.legend = self.axes.legend(fancybox=True, shadow=True)
             self.legend2line = {}  # Will map legend lines to original lines.
             for legend_line, original_line in zip(self.legend.get_lines(), self._lines):
                 # Enable picking on the legend line.
@@ -145,6 +149,7 @@ class Line2DBaseWidget(NapariMPLWidget):
         """
         self.span_selector = SpanSelector(**kwargs)
         self.span_selector.active = active
+        self.span_selection_active = active
 
     def _enable_span_selector(self, active=False):
         """
@@ -154,6 +159,7 @@ class Line2DBaseWidget(NapariMPLWidget):
         """
         if self.span_selector is not None:
             self.span_selector.active = active
+            self.span_selection_active = active
 
     def _on_span_select(self, xmin, xmax):
         """
@@ -163,17 +169,19 @@ class Line2DBaseWidget(NapariMPLWidget):
         """
         raise NotImplementedError
 
-    def _enable_legend_selection(self, active=False):
+    def _enable_legend_selector(self, active=False):
         """
         Enable or disable making legend pickable.
 
         This activates a global 'pick_event' for all artists.
         Filter picked artist in `_on_pick` callback function.
         """
-        self.legend_selection = active
+        self.legend_selection_active = active
         if active:
-            # `_on_pick` callback function must be implemented
-            self.canvas.figure.canvas.mpl_connect('pick_event', self._on_pick)
+            if self.pick_event_connection_id is None:
+                # `_on_pick` callback function must be implemented
+                self.pick_event_connection_id = self.canvas.figure.canvas.mpl_connect(
+                    'pick_event', self._on_pick)
 
     def _enable_mouse_clicks(self, active=False):
         """
@@ -182,10 +190,14 @@ class Line2DBaseWidget(NapariMPLWidget):
         Link mouse clicks to `onclick` callback function
         """
         if active:
-            self.cid = self.canvas.figure.canvas.mpl_connect(
-                'button_press_event', self._on_click)
+            if self.mouse_click_event_connection_id is None:
+                self.mouse_click_event_connection_id = self.canvas.figure.canvas.mpl_connect(
+                    'button_press_event', self._on_click)
         else:
-            self.canvas.figure.canvas.mpl_disconnect(self.cid)
+            if self.mouse_click_event_connection_id is not None:
+                print('Warning: disabling mouse clicks event')
+                self.canvas.figure.canvas.mpl_disconnect(
+                    self.mouse_click_event_connection_id)
 
     def _clear_selections(self):
         """
@@ -249,7 +261,7 @@ class MetadataLine2DWidget(Line2DBaseWidget):
                                    drag_from_anywhere=True)
 
         # Enable legend selection
-        self._enable_legend_selection(True)
+        self._enable_legend_selector(True)
         # Enable mouse clicks
         self._enable_mouse_clicks(active=True)
 
@@ -260,7 +272,7 @@ class MetadataLine2DWidget(Line2DBaseWidget):
 
     def _clear_selections(self):
         # Clear legend line selection
-        if self.legend_selection:
+        if self.legend_selection_active:
             self._selected_lines = []
             for line, legend_line in zip(self._lines, self.legend.get_lines()):
                 # Restore the alpha on the line in the legend
@@ -277,39 +289,71 @@ class MetadataLine2DWidget(Line2DBaseWidget):
         self.toolbar._update_buttons_checked(button_name='Select')
         self._enable_span_selector(active=self.toolbar.button_state)
 
-    def _on_legend_selection(self, selected_artist):
-        modifiers = QGuiApplication.keyboardModifiers()
-        # If 'shift' holded, do not clear previously selected lines
-        if modifiers == Qt.ShiftModifier:
-            pass
-        else:
-            self._selected_lines = []
-        # On the pick event, find the original line corresponding to the legend
-        # proxy line, and make it visible, while other become invisible.
-        selected_legend_line = selected_artist
-        selected_original_line = self.legend2line[selected_legend_line]
+    # def _on_legend_selection(self, selected_artist):
+    #     modifiers = QGuiApplication.keyboardModifiers()
+    #     # If 'shift' holded, do not clear previously selected lines
+    #     if modifiers == Qt.ShiftModifier:
+    #         pass
+    #     else:
+    #         self._selected_lines = []
+    #     # On the pick event, find the original line corresponding to the legend
+    #     # proxy line, and make it visible, while other become invisible.
+    #     selected_legend_line = selected_artist
+    #     selected_original_line = self.legend2line[selected_legend_line]
 
-        for line, legend_line in zip(self._lines, self.legend.get_lines()):
-            if line == selected_original_line:
-                # Change the alpha on the line in the legend
-                legend_line.set_alpha(1.0)
-                line.set_visible(True)
+    #     for line, legend_line in zip(self._lines, self.legend.get_lines()):
+    #         if line == selected_original_line:
+    #             # Change the alpha on the line in the legend
+    #             legend_line.set_alpha(1.0)
+    #             line.set_visible(True)
+    #             # Add line to selected lines
+    #             if line not in self._selected_lines:
+    #                 self._selected_lines.append(line)
+    #         else:
+    #             # only hide if line was not pre-selected
+    #             if line not in self._selected_lines:
+    #                 legend_line.set_alpha(0.2)
+    #                 line.set_visible(False)
+    #     self.canvas.figure.canvas.draw()
+
+    def _on_pick(self, event):
+        artist = event.artist
+        legend_line = None
+        if isinstance(artist, Line2D):
+            # Checks that picked line is in legend
+            # https://stackoverflow.com/a/71818208/11885372
+            if artist not in artist.axes.get_children():
+                legend_line = artist
+                line = self.legend2line[artist]
+
+                # self._on_legend_selection(artist)
+            else:
+                line = artist
+                if self.legend_selection_active:
+                    legend_line = self.legend.get_lines()[
+                        self._lines.index(line)]
+
+            # Then line was directly picked
+            if line.selected == True:
+                line.selected = False
+                # Remove line to selected lines
+                if line in self._selected_lines:
+                    self._selected_lines.remove(line)
+                # If legend, restore continuous line style
+                if legend_line is not None:
+                    legend_line.set_linestyle('-')
+
+            else:
+                line.selected = True
                 # Add line to selected lines
                 if line not in self._selected_lines:
                     self._selected_lines.append(line)
-            else:
-                # only hide if line was not pre-selected
-                if line not in self._selected_lines:
-                    legend_line.set_alpha(0.2)
-                    line.set_visible(False)
-        self.canvas.figure.canvas.draw()
+                # If legend, change legend line style
+                if legend_line is not None:
+                    legend_line.set_linestyle('--')
 
-    def _on_pick(self, event):
-        if isinstance(event.artist, Line2D):
-            # Checks that picked line is in legend
-            # https://stackoverflow.com/a/71818208/11885372
-            if event.artist not in event.artist.axes.get_children():
-                self._on_legend_selection(event.artist)
+        print('Selected lines: ', self._selected_lines)
+        self.canvas.figure.canvas.draw_idle()
 
     def _on_span_select(self, xmin, xmax):
         self.clear()

@@ -35,7 +35,6 @@ class Line2DBaseWidget(NapariMPLWidget):
         Plot the currently selected layers.
         """
         data, x_axis_name, y_axis_name = self._get_data()
-        
 
         if len(data) == 0:
             # don't plot if there isn't data
@@ -72,32 +71,35 @@ class Line2DBaseWidget(NapariMPLWidget):
         """
         raise NotImplementedError
 
-class MetadataLine2DWidget(Line2DBaseWidget):
+
+class FeaturesLine2DWidget(Line2DBaseWidget):
     n_layers_input = Interval(1, 1)
+    # All layers that have a .features attributes
+    input_layer_types = (
+        napari.layers.Labels,
+    )
+    x_axis_features = ['frame', 'time']
 
     def __init__(self, napari_viewer: napari.viewer.Viewer):
         super().__init__(napari_viewer)
-        self.setMinimumSize(200, 200)
-        self._plugin_name_widget = magicgui(
-            self._set_plugin_name,
-            plugin_name={"choices": self._get_plugin_metadata_key},
-            auto_call = True,
-        )
         self._key_selection_widget = magicgui(
             self._set_axis_keys,
-            x_axis_key={"choices": self._get_valid_axis_keys},
-            y_axis_key={"choices": self._get_valid_axis_keys},
+            x_axis_key={"choices": self._get_valid_axis_keys_x},
+            y_axis_key={"choices": self._get_valid_axis_keys_y},
             call_button="plot",
         )
-        
-        self.ray_index = 0
-        self.dot_index = 0
-        self.layout().insertWidget(0, self._plugin_name_widget.native)
+
         self.layout().addWidget(self._key_selection_widget.native)
+        self.layers[0].events.selected_label.connect(self.print_layer_name)
+
+    def print_layer_name(self, event: napari.utils.events.Event) -> None:
+        print("data!")
+        if self.layers[0].show_selected_label:
+            self._draw()
 
     @property
     def x_axis_key(self) -> Optional[str]:
-        """Key to access x axis data from the Metadata"""
+        """Key to access x axis data from the FeaturesTable"""
         return self._x_axis_key
 
     @x_axis_key.setter
@@ -107,7 +109,7 @@ class MetadataLine2DWidget(Line2DBaseWidget):
 
     @property
     def y_axis_key(self) -> Optional[str]:
-        """Key to access y axis data from the Metadata"""
+        """Key to access y axis data from the FeaturesTable"""
         return self._y_axis_key
 
     @y_axis_key.setter
@@ -120,68 +122,46 @@ class MetadataLine2DWidget(Line2DBaseWidget):
         self._x_axis_key = x_axis_key
         self._y_axis_key = y_axis_key
         self._draw()
-        
-    @property
-    def plugin_name_key(self) -> Optional[str]:
-        """Key to plugin dictionary in the Metadata"""
-        return self._plugin_name_key
 
-    @plugin_name_key.setter
-    def plugin_name_key(self, key: Optional[str]) -> None:
-        self._plugin_name_key = key
-        
-    def _set_plugin_name(self, plugin_name: str) -> None:
-        """Set plugin name from layer metadata"""
-        self._plugin_name_key = plugin_name
-        self._key_selection_widget.reset_choices()
-    
-    def _get_plugin_metadata_key(
-            self, combo_widget: Optional[ComboBox] = None
-        ) -> List[str]:
-        """Get plugin key from layer metadata"""
-        if len(self.layers) == 0:
-            return []
-        else:
-            return self._get_valid_metadata_keys() 
-
-    def _get_valid_metadata_keys(
-            self) -> List[str]:
-        """Get metadata keys if nested dictionaries"""
-        if len(self.layers) == 0:
-            return []
-        else:
-            metadata = self.layers[0].metadata
-            keys_with_nested_dicts = []
-            for key, value in metadata.items():
-                if isinstance(value, dict):
-                    keys_with_nested_dicts.append(key)
-            return keys_with_nested_dicts
-
-    def _get_valid_axis_keys(
+    def _get_valid_axis_keys_y(
         self, combo_widget: Optional[ComboBox] = None
     ) -> List[str]:
         """
-        Get the valid axis keys from the layer Metadata.
+        Get the valid axis keys from the layer FeatureTable.
+
         Returns
         -------
         axis_keys : List[str]
-            The valid axis keys in the Metadata. If the table is empty
+            The valid axis keys in the FeatureTable. If the table is empty
             or there isn't a table, returns an empty list.
         """
-        
-        if len(self.layers) == 0:
+        if len(self.layers) == 0 or not (hasattr(self.layers[0], "features")):
             return []
         else:
-            valid_metadata = self._get_valid_metadata_keys()
-            if not valid_metadata:
-                return []
-            else:
-                if not hasattr(self, "plugin_name_key"):
-                    self.plugin_name_key = self._get_valid_metadata_keys()[0]
-                return self.layers[0].metadata[self.plugin_name_key].keys()
+            return self.layers[0].features.keys()
+
+    def _get_valid_axis_keys_x(
+        self, combo_widget: Optional[ComboBox] = None
+    ) -> List[str]:
+        """
+        Get the valid axis keys from the layer FeatureTable.
+
+        Returns
+        -------
+        axis_keys : List[str]
+            The valid axis keys in the FeatureTable. If the table is empty
+            or there isn't a table, returns an empty list.
+        """
+        if len(self.layers) == 0 or not (hasattr(self.layers[0], "features")):
+            return []
+        else:
+            features = self.layers[0].features
+            time_related_column_names_in_features = get_column_names_matching_strings(features, self.x_axis_features)
+            return time_related_column_names_in_features
 
     def _get_data(self) -> Tuple[List[np.ndarray], str, str]:
         """Get the plot data.
+
         Returns
         -------
         data : List[np.ndarray]
@@ -194,23 +174,30 @@ class MetadataLine2DWidget(Line2DBaseWidget):
             The title to display on the y axis. Returns
             an empty string if nothing to plot.
         """
-        valid_metadata = self._get_valid_metadata_keys()
-        
+        if not hasattr(self.layers[0], "features"):
+            # if the selected layer doesn't have a featuretable,
+            # skip draw
+            return [], "", ""
+
+        feature_table = self.layers[0].features
+
         if (
-            (not valid_metadata)
+            (len(feature_table) == 0)
             or (self.x_axis_key is None)
             or (self.y_axis_key is None)
         ):
             return [], "", ""
-        
-        if not hasattr(self, "plugin_name_key"):
-            self.plugin_name_key = valid_metadata[0]
 
-        plugin_metadata_dict = self.layers[0].metadata[self.plugin_name_key]
+        # Sort features by label and x_axis_key
+        feature_table = feature_table.sort_values(by=['label', self.x_axis_key])
+        labels = feature_table['label'].unique().tolist()
 
-        data_x = warp_to_list(plugin_metadata_dict[self.x_axis_key])
-        data_y = warp_to_list(plugin_metadata_dict[self.y_axis_key])
-        data = [data_x, data_y]
+        # Get data for each label (data_x is the same for all labels)
+        grouped = feature_table.groupby('label')
+        data_x = [list(grouped)[0][1][self.x_axis_key].values]
+        data_y = [sub_df[self.y_axis_key].values for label, sub_df in grouped]
+
+        data = [data_x, data_y, labels]
 
         x_axis_name = self.x_axis_key.replace("_", " ")
         y_axis_name = self.y_axis_key.replace("_", " ")
@@ -223,24 +210,76 @@ class MetadataLine2DWidget(Line2DBaseWidget):
         ``self.update_layers()``.
         """
         if hasattr(self, "_key_selection_widget"):
-            self._plugin_name_widget.reset_choices()
             self._key_selection_widget.reset_choices()
-        
+
         # reset the axis keys
         self._x_axis_key = None
         self._y_axis_key = None
-        
+
+    def draw(self) -> None:
+        """
+        Plot the currently selected layers.
+        """
+        data, x_axis_name, y_axis_name = self._get_data()
+
+        print(data, type(data), len(data))
+        if len(data) == 0:
+            # don't plot if there isn't data
+            return
+        self._lines = []
+        x_data = data[0]
+        y_data = data[1]
+        labels = data[2]
+
+        if len(y_data) < len(x_data):
+            print("x_data bigger than y_data, plotting only first y_data")
+        for i, y in enumerate(y_data):
+            # If show_selected_label is True, only plot the selected label
+            if self.layers[0].show_selected_label and i != self.layers[0].selected_label - 1:
+                continue
+
+            if len(x_data) == 1:
+                line = self.axes.plot(x_data[0], y, color=self.layers[0].get_color(labels[i]), alpha=self._line_alpha)
+            else:
+                line = self.axes.plot(x_data[i], y, color=self.layers[0].get_color(labels[i]), alpha=self._line_alpha)
+
+        self.axes.set_xlabel(x_axis_name)
+        self.axes.set_ylabel(y_axis_name)
+
+        self.canvas.draw()
+
+
+def get_column_names_matching_strings(data, strings_list):
+    if isinstance(data, pd.DataFrame):
+        columns = data.columns
+    elif isinstance(data, dict):
+        columns = data.keys()
+    else:
+        raise ValueError("Invalid input data type. Supported types are DataFrame and dictionary.")
+
+    lowercase_columns = [col.lower() for col in columns]
+    lowercase_strings = [string.lower() for string in strings_list]
+
+    matching_elements = []
+    for string in lowercase_strings:
+        if any(string in col for col in lowercase_columns):
+            matching_elements.append(string)
+
+    if matching_elements:
+        return matching_elements
+    else:
+        return None
+
+
 def warp_to_list(data):
     if isinstance(data, list):
         return data
     # If numpy array, make a list from axis=0
     if isinstance(data, np.ndarray):
         if len(data.shape) == 1:
-            data = data[np.newaxis,:]
+            data = data[np.newaxis, :]
         data = data.tolist()
     # If pandas dataframe, make a list from columns
     if isinstance(data, pd.DataFrame):
         data = data.T.values.tolist()
     return data
-
-    
